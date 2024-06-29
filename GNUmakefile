@@ -6,8 +6,8 @@ WEBUI_OUT_LIB_NAME = webui-2
 
 # TLS
 WEBUI_USE_TLS =
-WEBUI_TLS_INCLUDE = .
-WEBUI_TLS_LIB = .
+WEBUI_TLS_INCLUDE ?= .
+WEBUI_TLS_LIB ?= .
 TLS_CFLAG = -DNO_SSL
 TLS_LDFLAG_DYNAMIC =
 ifeq ($(WEBUI_USE_TLS), 1)
@@ -25,10 +25,13 @@ MAKEFILE_DIR := $(dir $(MAKEFILE_PATH))
 BUILD_DIR := $(MAKEFILE_DIR)/dist
 
 # ARGS
-# Set a compiler when running on Linux via `make CC=gcc` / `make CC=clang`
-CC = gcc
-ifneq ($(filter $(CC),gcc clang aarch64-linux-gnu-gcc arm-linux-gnueabihf-gcc musl-gcc),$(CC))
-$(error Invalid compiler specified: `$(CC)`)
+CC ?= gcc
+ifeq ($(CC), cc)
+	ifeq ($(shell uname),Darwin)
+		CC = clang
+	else
+		CC = gcc
+	endif
 endif
 
 # Allow to add arch-target for macOS CI cross compilation
@@ -38,8 +41,6 @@ ARCH_TARGET ?=
 CIVETWEB_BUILD_FLAGS := -o civetweb.o -I"$(MAKEFILE_DIR)/include/" -c "$(MAKEFILE_DIR)/src/civetweb/civetweb.c" -I"$(WEBUI_TLS_INCLUDE)" $(TLS_CFLAG) -w
 CIVETWEB_DEFINE_FLAGS = -DNDEBUG -DNO_CACHING -DNO_CGI -DUSE_WEBSOCKET $(TLS_CFLAG)
 WEBUI_BUILD_FLAGS := -o webui.o -I"$(MAKEFILE_DIR)/include/" -c "$(MAKEFILE_DIR)/src/webui.c" -I"$(WEBUI_TLS_INCLUDE)" $(TLS_CFLAG) -w
-WKWEBKIT_BUILD_FLAGS := -o wkwebview.o -c "$(MAKEFILE_DIR)/src/webview/wkwebview.m"
-WKWEBKIT_LINK_FLAGS := -framework Cocoa -framework WebKit
 
 # OUTPUT FILES
 # The static output is the same for all platforms
@@ -59,8 +60,9 @@ else ifeq ($(shell uname),Darwin)
 	PLATFORM := macos
 	CC = clang
 	LIB_DYN_OUT := $(WEBUI_OUT_LIB_NAME).dylib
-	WEBKIT := -framework Cocoa -framework WebKit
 	WEBKIT_OBJ := wkwebview.o
+	WKWEBKIT_BUILD_FLAGS := -o wkwebview.o -c "$(MAKEFILE_DIR)/src/webview/wkwebview.m"
+	WKWEBKIT_LINK_FLAGS := -framework Cocoa -framework WebKit
 else
 	# Linux
 	PLATFORM := linux
@@ -132,7 +134,7 @@ else
 endif
 #	Build macOS WKWebView
 ifeq ($(shell uname),Darwin)
-	@cd "$(BUILD_DIR)/debug" \
+	@cd "$(BUILD_DIR)" \
 	&& echo "Build WebUI Objective-C WKWebKit ($(CC) $(TARGET)release)..." \
 	&& $(CC) $(TARGET) $(WKWEBKIT_BUILD_FLAGS) -Os
 endif

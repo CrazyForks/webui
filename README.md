@@ -2,7 +2,7 @@
 
 ![Logo](https://raw.githubusercontent.com/webui-dev/webui-logo/main/webui_240.png)
 
-# WebUI v2.5.0-Beta-1
+# WebUI v2.5.0-beta
 
 [build-status]: https://img.shields.io/github/actions/workflow/status/webui-dev/webui/ci.yml?branch=main&style=for-the-badge&logo=githubactions&labelColor=414868&logoColor=C0CAF5
 [last-commit]: https://img.shields.io/github/last-commit/webui-dev/webui?style=for-the-badge&logo=github&logoColor=C0CAF5&labelColor=414868
@@ -14,9 +14,9 @@
 [![][release-version]](https://github.com/webui-dev/webui/releases/latest)
 [![][license]](https://github.com/webui-dev/webui/blob/main/LICENSE)
 
-> WebUI is not a web-server solution or a framework, but it allows you to use any web browser as a GUI, with your preferred language in the backend and HTML5 in the frontend. All in a lightweight portable lib.
+> Use any web browser or WebView as GUI, with your preferred language in the backend and modern web technologies in the frontend, all in a lightweight portable lib.
 
-![Screenshot](https://github.com/webui-dev/webui/assets/34311583/57992ef1-4f7f-4d60-8045-7b07df4088c6)
+![Screenshot](https://github.com/webui-dev/webui/assets/16948659/39c5b000-83eb-4779-a7ce-9769d3acf204)
 
 </div>
 
@@ -39,12 +39,13 @@
 
 ## Features
 
-- Portable (*Needs only a web browser at runtime*)
+- Portable (*Needs only a web browser or a WebView at runtime*)
 - One header file
 - Lightweight (*Few Kb library*) & Small memory footprint
 - Fast binary communication protocol
 - Multi-platform & Multi-Browser
 - Using private profile for safety
+- Cross-platform WebView
 
 ## Showcase
 
@@ -118,7 +119,7 @@ Think of WebUI like a WebView controller, but instead of embedding the WebView c
 
   Download and install the OpenSSL pre-compiled binaries for Windows:
 
-  - MSVC: [x64 OpenSSL v3.1.3](https://slproweb.com/download/Win64OpenSSL-3_1_3.msi) or [_32Bit_](https://slproweb.com/download/Win32OpenSSL-3_1_3.msi). Please check this [Wiki list](https://wiki.openssl.org/index.php/Binaries) for more info.
+  - MSVC: [x64 OpenSSL v3.3.1](https://slproweb.com/download/Win64OpenSSL-3_3_1.msi) or [_32Bit_](https://slproweb.com/download/Win32OpenSSL-3_3_1.msi). Please check this [Wiki list](https://wiki.openssl.org/index.php/Binaries) for more info.
   - MinGW: [Curl for Windows win OpenSSL](https://curl.se/windows/)
 
   ```powershell
@@ -183,7 +184,9 @@ Think of WebUI like a WebView controller, but instead of embedding the WebView c
 | V                       | ✔️             | [V-WebUI](https://github.com/webui-dev/v-webui)           |
 | Zig                     | ✔️             | [Zig-WebUI](https://github.com/webui-dev/zig-webui)       |
 | Odin                    | _not complete_ | [Odin-WebUI](https://github.com/webui-dev/odin-webui)     |
+| Common Lisp             | ✔️             | [cl-webui](https://github.com/garlic0x1/cl-webui)|
 | Delphi                  | ✔️             | [WebUI4Delphi](https://github.com/salvadordf/WebUI4Delphi)|
+| QuickJS                 | ✔️             | [QuickUI](https://github.com/xland/QuickUI)               |
 
 ## Supported Web Browsers
 
@@ -199,6 +202,14 @@ Think of WebUI like a WebView controller, but instead of embedding the WebView c
 | Epic            | ✔️              | ✔️            | _not available_ |
 | Apple Safari    | _not available_ | _coming soon_ | _not available_ |
 | Opera           | _coming soon_   | _coming soon_ | _coming soon_   |
+
+## Supported WebView
+
+| WebView         | Status         |
+| --------------- | --------------- |
+| Windows WebView2 | ✔️ |
+| Linux GTK WebView   | ✔️ |
+| macOS WKWebView  | ✔️ |
 
 ### License
 

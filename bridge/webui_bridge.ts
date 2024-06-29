@@ -40,7 +40,7 @@ class WebuiBridge {
 	#hasEvents = false;
 	#callPromiseID = new Uint16Array(1);
 	#callPromiseResolve: (((data: string) => unknown) | undefined)[] = [];
-	#allowNavigation = false;
+	#allowNavigation = true;
 	#sendQueue: Uint8Array[] = [];
 	#isSending = false;
 	// WebUI Const
@@ -126,32 +126,27 @@ class WebuiBridge {
 		}
 		// Connect to the backend application
 		this.#start();
-		// Handle navigation server side
+		// Navigation event listener
 		if ('navigation' in globalThis) {
 			globalThis.navigation.addEventListener('navigate', (event) => {
 				if (!this.#allowNavigation) {
-					event.preventDefault();
-					const url = new URL(event.destination.url);
-					if (this.#hasEvents) {
+					if (this.#hasEvents && this.#wsStatus) {
+						event.preventDefault();
+						const url = new URL(event.destination.url);
 						if (this.#log) console.log(`WebUI -> DOM -> Navigation Event [${url.href}]`);
 						this.#sendEventNavigation(url.href);
-					} else {
-						this.#close(this.#CMD_NAVIGATION, url.href);
 					}
 				}
 			});
 		} else {
-			// Handle all link click to prevent natural navigation
-			// Rebind listener if user inject new html
+			// Click navigation event listener
 			addRefreshableEventListener(document.body, 'a', 'click', (event) => {
 				if (!this.#allowNavigation) {
-					event.preventDefault();
-					const { href } = event.target as HTMLAnchorElement;
-					if (this.#hasEvents) {
+					if (this.#hasEvents && this.#wsStatus) {
+						event.preventDefault();
+						const { href } = event.target as HTMLAnchorElement;
 						if (this.#log) console.log(`WebUI -> DOM -> Navigation Click Event [${href}]`);
 						this.#sendEventNavigation(href);
-					} else {
-						this.#close(this.#CMD_NAVIGATION, href);
 					}
 				}
 			});
@@ -174,10 +169,12 @@ class WebuiBridge {
 	}
 	// Methods
 	#close(reason = 0, value = '') {
-		this.#wsStatus = false;
 		this.#closeReason = reason;
 		this.#closeValue = value;
-		this.#ws.close();
+		if (this.#wsStatus) {
+			this.#wsStatus = false;
+			this.#ws.close();
+		}
 		if (reason === this.#CMD_NAVIGATION) {
 			if (this.#log) {
 				console.log(`WebUI -> Close -> Navigation to [${value}]`);
@@ -249,6 +246,7 @@ class WebuiBridge {
 		this.#callPromiseID[0] = 0;
 		if (this.#bindList.includes(this.#winNum + '/')) {
 			this.#hasEvents = true;
+			this.#allowNavigation = false;
 		}
 		const host = window.location.hostname;
 		const url = this.#secure ? ('wss://' + host) : ('ws://' + host);
@@ -383,7 +381,6 @@ class WebuiBridge {
 							}
 						}
 						break;
-
 					case this.#CMD_NAVIGATION:
 						// Protocol
 						// 0: [SIGNATURE]
@@ -415,7 +412,10 @@ class WebuiBridge {
 						if (!this.#log) globalThis.close();
 						else {
 							console.log(`WebUI -> CMD -> Close`);
-							this.#ws.close();
+							if (this.#wsStatus) {
+								this.#wsStatus = false;
+								this.#ws.close();
+							}
 						}
 						break;
 				}
@@ -432,7 +432,7 @@ class WebuiBridge {
 						// Get function name
 						const functionName: string = this.#getDataStrFromPacket(buffer8, this.#PROTOCOL_DATA);
 						// Get the raw data
-						const rawDataIndex: number = 2 + functionName.length + 1;
+						const rawDataIndex: number = this.#PROTOCOL_DATA + functionName.length + 1;
 						const userRawData = buffer8.subarray(rawDataIndex);
 						if (this.#log) console.log(`WebUI -> CMD -> Send Raw ${buffer8.length} bytes to [${functionName}()]`);
 						// Call the user function, and pass the raw data
@@ -554,34 +554,28 @@ class WebuiBridge {
 	}
 	#sendEventNavigation(url: string) {
 		if (url !== '') {
-			if (this.#hasEvents) {
+			if (this.#wsStatus) {
 				if (this.#log) console.log(`WebUI -> Send Navigation Event [${url}]`);
-				if (this.#wsStatus && this.#hasEvents) {
-					const packet = Uint8Array.of(
-						// Protocol
-						// 0: [SIGNATURE]
-						// 1: [TOKEN]
-						// 2: [ID]
-						// 3: [CMD]
-						// 4: [URL]
-						this.#WEBUI_SIGNATURE,
-						0,
-						0,
-						0,
-						0, // Token (4 Bytes)
-						0,
-						0, // ID (2 Bytes)
-						this.#CMD_NAVIGATION,
-						...new TextEncoder().encode(url),
-					);
-					this.#addToken(packet, this.#token, this.#PROTOCOL_TOKEN);
-					// this.#addID(packet, 0, this.#PROTOCOL_ID)
-					this.#sendData(packet);
-				}
-			} else {
-				if (this.#log) console.log(`WebUI -> Navigation To [${url}]`);
-				this.#allowNavigation = true;
-				globalThis.location.replace(url);
+				const packet = Uint8Array.of(
+					// Protocol
+					// 0: [SIGNATURE]
+					// 1: [TOKEN]
+					// 2: [ID]
+					// 3: [CMD]
+					// 4: [URL]
+					this.#WEBUI_SIGNATURE,
+					0,
+					0,
+					0,
+					0, // Token (4 Bytes)
+					0,
+					0, // ID (2 Bytes)
+					this.#CMD_NAVIGATION,
+					...new TextEncoder().encode(url),
+				);
+				this.#addToken(packet, this.#token, this.#PROTOCOL_TOKEN);
+				// this.#addID(packet, 0, this.#PROTOCOL_ID)
+				this.#sendData(packet);
 			}
 		}
 	}
@@ -598,9 +592,11 @@ class WebuiBridge {
 			if (bind.trim()) {
 				const fn = bind.replace(`${this.#winNum}/`, '');
 				if (fn.trim()) {
-					this[fn] = (...args: DataTypes[]) => this.call(fn, ...args);
-					if (typeof (window as any)[fn] === 'undefined') {
-						(window as any)[fn] = (...args: string[]) => this.call(fn, ...args);
+					if (fn !== '_webui_core_api') {
+						this[fn] = (...args: DataTypes[]) => this.call(fn, ...args);
+						if (typeof (window as any)[fn] === 'undefined') {
+							(window as any)[fn] = (...args: string[]) => this.call(fn, ...args);
+						}
 					}
 				}
 			}
@@ -665,6 +661,9 @@ class WebuiBridge {
 			this.#callPromiseResolve[callId] = resolve;
 			this.#sendData(packet);
 		});
+	}
+	async callCore(fn: string, ...args: DataTypes[]): Promise<DataTypes> {
+		return this.call('__webui_core_api__', fn, ...args);
 	}
 	// -- Public APIs --------------------------
 	/**
@@ -732,6 +731,26 @@ class WebuiBridge {
 	setEventCallback(callback: (e: number) => void): void {
         this.#eventsCallback = callback;
     }
+	/**
+	 * Check if UI is connected to the back-end. The connection
+	 * is done by including `webui.js` virtual file in the HTML.
+	 *
+	 * @return - Boolean `true` if connected
+	 */
+	isConnected(): boolean {
+		return (this.#wsStatus);
+	}
+	/**
+	 * Get OS high contrast preference.
+	 *
+	 * @return - Boolean `True` if OS is using high contrast theme
+	 */
+	async isHighContrast(): Promise<boolean> {
+		// Call a core function and wait for response
+		const response = await this.callCore("high_contrast") as boolean;
+		if (this.#log) console.log(`Core Response: [${response}]`);
+		return response;
+	}
 }
 // Export
 type webui = WebuiBridge;
