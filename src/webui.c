@@ -6842,6 +6842,24 @@ static bool _webui_custom_browser_exist(_webui_window_t* win, size_t browser) {
     return false;
 }
 
+static bool _webui_webview_exist() {
+
+    #ifdef WEBUI_LOG
+    _webui_log_debug("[Core]\t\t_webui_webview_exist()\n");
+    #endif
+
+    #ifdef _WIN32
+        // Check WebView2Loader.dll is loadable and the WebView2 Runtime is installed
+        return _webui_win32_wv2_check_runtime();
+    #elif __linux__
+        // Try to dynamically load GTK3 and WebKit2GTK; idempotent if already loaded
+        return _webui_load_gtk_and_webkit();
+    #else
+        // macOS: WKWebView ships with the OS and is always available
+        return true;
+    #endif
+}
+
 static bool _webui_browser_exist(_webui_window_t* win, size_t browser) {
 
     #ifdef WEBUI_LOG
@@ -7550,6 +7568,8 @@ static bool _webui_browser_exist(_webui_window_t* win, size_t browser) {
         } else
             return false;
         #endif
+    } else if (browser == Webview) {
+        return _webui_webview_exist();
     }
 
     return false;

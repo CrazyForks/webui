@@ -325,6 +325,31 @@ bool _webui_win32_wv2_check_loader_dll(void) {
     #endif
 }
 
+bool _webui_win32_wv2_check_runtime(void) {
+    // Ensure loader DLL (or static lib) is available first
+    if (!_webui_win32_wv2_check_loader_dll()) {
+        return false;
+    }
+    // Verify the WebView2 Runtime is installed by requesting its version string
+    typedef HRESULT (__stdcall *GetVersionFunc)(PCWSTR, LPWSTR*);
+    #ifdef WEBUI_WEBVIEW_STATIC
+    GetVersionFunc getVersion = GetAvailableCoreWebView2BrowserVersionString;
+    #else
+    GetVersionFunc getVersion = (GetVersionFunc)GetProcAddress(
+        g_webviewLib, "GetAvailableCoreWebView2BrowserVersionString");
+    if (!getVersion) {
+        return false;
+    }
+    #endif
+    LPWSTR versionInfo = NULL;
+    HRESULT hr = getVersion(NULL, &versionInfo);
+    if (SUCCEEDED(hr) && versionInfo) {
+        CoTaskMemFree(versionInfo);
+        return true;
+    }
+    return false;
+}
+
 _webui_win32_wv2_handle _webui_win32_wv2_create(void) {
     return static_cast<_webui_win32_wv2_handle>(new WebView2Instance());
 }
