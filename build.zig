@@ -173,7 +173,24 @@ fn build_examples(b: *Build, webui: *Compile) !void {
     // Iterate examples/C. Zig 0.16 removed std.fs.cwd() and reworked Dir/Iterator
     // to require an Io instance, so split the open+iterate path by version while
     // sharing the per-example wiring below.
-    if (comptime builtin.zig_version.minor >= 16) {
+    if (comptime builtin.zig_version.minor >= 17) {
+        const io = b.graph.io;
+        var examples_dir = b.root.root_dir.handle.openDir(
+            io,
+            "examples/C",
+            .{ .iterate = true },
+        ) catch |e| switch (e) {
+            error.FileNotFound => return,
+            else => return e,
+        };
+        defer examples_dir.close(io);
+
+        var paths = examples_dir.iterate();
+        while (try paths.next(io)) |val| {
+            if (val.kind != .directory) continue;
+            try add_example(b, webui, build_examples_step, val.name);
+        }
+    } else if (comptime builtin.zig_version.minor >= 16) {
         const io = b.graph.io;
         var examples_dir = b.build_root.handle.openDir(
             io,
