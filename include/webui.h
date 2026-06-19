@@ -796,7 +796,8 @@ WEBUI_EXPORT void webui_set_profile(size_t window, const char* name, const char*
 WEBUI_EXPORT void webui_set_proxy(size_t window, const char* proxy_server);
 
 /**
- * @brief Get current URL of a running window.
+ * @brief Get current URL of a running window. We highly recommend using this API after 
+ * showing the window.
  *
  * @param window The window number
  *

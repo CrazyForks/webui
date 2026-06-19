@@ -8578,7 +8578,9 @@ static bool _webui_show(_webui_window_t* win, struct mg_connection* client, cons
     win->is_showing = false;
 
     // Bring the window to front after showing content
-    webui_focus(win->num);
+    if ((browser != NoBrowser) && (!win->hide)) {
+        webui_focus(win->num);
+    }
 
     return status;
 }
@@ -8914,6 +8916,9 @@ static bool _webui_show_window(_webui_window_t* win, struct mg_connection* clien
         _webui_log_debug("[Core]\t\t_webui_show_window(FILE, [%zu])\n", browser);
     #endif
 
+    // Stop any window exit signal as we are going to show a window
+    _webui_mutex_win_is_exit_now(win, WEBUI_MUTEX_SET_FALSE);
+
     #if __linux__
         GTK_WEBVIEW_SET_IN_SHOW(win, true)
     #endif
@@ -8967,37 +8972,41 @@ static bool _webui_show_window(_webui_window_t* win, struct mg_connection* clien
     }
     #endif
 
-    _webui_mutex_win_is_exit_now(win, WEBUI_MUTEX_SET_FALSE);
+    // Status
+    bool is_window_connected = _webui_mutex_is_connected(win, WEBUI_MUTEX_GET_STATUS);
+    bool is_server_running = _webui_mutex_is_server_running(win, WEBUI_MUTEX_GET_STATUS);
+    bool is_this_ui_reload = (is_window_connected && is_server_running); // User set new UI content on a running window
+    bool is_this_new_window = (!is_window_connected && !is_server_running); // New window
+    bool is_this_empty_server = (!is_window_connected && is_server_running); // Server exit, but not connected
+    bool is_last_was_no_browser = (win->current_browser == NoBrowser); // Server exit, but not connected, probably by `webui_get_url()`
 
-    // Wait for server threads to stop
-    if (!_webui_mutex_is_connected(win, WEBUI_MUTEX_GET_STATUS) && 
-        _webui_mutex_is_server_running(win, WEBUI_MUTEX_GET_STATUS)) {
-        // This is not a UI reload. The server thread is still running, 
-        // wait for it to stop before starting a new one.
-        _webui_timer_t timer;
-        _webui_timer_start(&timer);
-        for (;;) {
-            #ifdef WEBUI_LOG
-            _webui_log_debug("[Core]\t\t_webui_show_window() -> Waiting for server thread to stop...\n");
-            #endif
-            _webui_sleep(100);
-            if (!_webui_mutex_is_server_running(win, WEBUI_MUTEX_GET_STATUS)) {
+    // Old Server Cleanup
+    if (is_this_empty_server) {
+        if (!is_last_was_no_browser) {
+            // Wait for old server threads to stop if it's doing cleaning up
+            // in some OS like Linux + GTK WebView, the old server thread may
+            // not stop immediately after the old window is closed.
+            _webui_timer_t timer;
+            _webui_timer_start(&timer);
+            for (;;) {
                 #ifdef WEBUI_LOG
-                _webui_log_debug("[Core]\t\t_webui_show_window() -> Server thread stopped.\n");
+                _webui_log_debug("[Core]\t\t_webui_show_window() -> Waiting for old server thread to stop...\n");
                 #endif
-                break;
-            }
-            if (_webui_timer_is_end(&timer, 1500)) {
-                #ifdef WEBUI_LOG
-                _webui_log_debug("[Core]\t\t_webui_show_window() -> Server thread did not stop in time.\n");
-                #endif
-                break;
+                _webui_sleep(100);
+                if (!_webui_mutex_is_server_running(win, WEBUI_MUTEX_GET_STATUS)) {
+                    #ifdef WEBUI_LOG
+                    _webui_log_debug("[Core]\t\t_webui_show_window() -> Old server thread stopped.\n");
+                    #endif
+                    break;
+                }
+                if (_webui_timer_is_end(&timer, 1500)) {
+                    #ifdef WEBUI_LOG
+                    _webui_log_debug("[Core]\t\t_webui_show_window() -> Old server thread did not stop in time.\n");
+                    #endif
+                    break;
+                }
             }
         }
-    } else {
-        #ifdef WEBUI_LOG
-        _webui_log_debug("[Core]\t\t_webui_show_window() -> This is UI reload, reusing the same server thread.\n");
-        #endif
     }
 
     // Initialization
@@ -9017,6 +9026,7 @@ static bool _webui_show_window(_webui_window_t* win, struct mg_connection* clien
         }
     }
 
+    // Free previous content if any
     if (win->html != NULL)
         _webui_free_mem((void*)win->html);
     if (win->url != NULL)
@@ -9027,6 +9037,8 @@ static bool _webui_show_window(_webui_window_t* win, struct mg_connection* clien
         if (win->user_index_file_encoded != NULL)
             _webui_free_mem((void*)win->user_index_file_encoded);
     }
+
+    // Reset HTML and URL
     win->html = NULL;
     win->url = NULL;
     if (!keep_user_index_file) {
@@ -9040,16 +9052,17 @@ static bool _webui_show_window(_webui_window_t* win, struct mg_connection* clien
         // Use user's custom port
         win->server_port = win->custom_server_port;
     }
-    else if (_webui_mutex_is_connected(win, WEBUI_MUTEX_GET_STATUS)) {
-        // Window is already connected, This is a UI reload.
+    else if (is_this_ui_reload || is_this_empty_server) {
+        // This is a UI reload or empty server.
         // Let's reuse the same port if still valid
-        if (win->server_port == 0)
-            // For some reason the port is 0, get a new free port
+        if (win->server_port == 0) {
+            // Port is not valid, get a new port
             win->server_port = _webui_get_free_port();
+        }
     }
     else {
-        // Window is not connected
-        // Get a new free port
+        // This is a new window.
+        // Get a new port
         win->server_port = _webui_get_free_port();
     }
 
@@ -9177,6 +9190,7 @@ static bool _webui_show_window(_webui_window_t* win, struct mg_connection* clien
                 #ifdef WEBUI_LOG
                 _webui_log_debug("[Core]\t\t_webui_show_window() -> Starting server only mode (NoBrowser)\n");
                 #endif
+                win->current_browser = NoBrowser;
                 runBrowser = true;
             }
         }
