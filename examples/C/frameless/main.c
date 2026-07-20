@@ -18,7 +18,6 @@ const char* html =
 "        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;"
 "        display: flex;"
 "        flex-direction: column;"
-"        border-radius: 10px;"
 "        backdrop-filter: blur(24px);"
 "        -webkit-backdrop-filter: blur(24px);"
 "        border: 1px solid rgba(255, 255, 255, 0.12);"
@@ -52,7 +51,7 @@ const char* html =
 "      .buttons span:active { transform: scale(0.9); filter: brightness(0.9); }"
 "      .close { background: #ff5f57; }"
 "      .minimize { background: #ffbd2e; }"
-"      /* .maximize { background: #28c940; } REMOVED */"
+"      .maximize { background: #28c940; } "
 "      #content {"
 "        flex-grow: 1;"
 "        display: flex;"
@@ -83,6 +82,7 @@ const char* html =
 "        <span id='title'>WebUI Frameless WebView Window</span>"
 "        <div id='buttons'>"
 "          <span class='button minimize' onclick='minimize()'></span>"
+"          <span class='button maximize' onclick='maximize()'></span>"
 "          <span class='button close' onclick='close_win()'></span>"
 "        </div>"
 "      </div>"
@@ -117,7 +117,7 @@ int main() {
 	webui_set_size(my_window, 800, 600);
 	webui_set_frameless(my_window, true);
 	webui_set_transparent(my_window, true);
-	webui_set_resizable(my_window, false);
+	webui_set_resizable(my_window, true);
 	webui_set_center(my_window);
 
 	webui_show_wv(my_window, html);
