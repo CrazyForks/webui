@@ -157,6 +157,8 @@ public:
                 }
 
                 RECT bounds = {0, 0, instance->width, instance->height};
+                if (instance->hwnd)
+                    GetClientRect(instance->hwnd, &bounds);
                 controller->put_Bounds(bounds);
 
                 auto titleHandler = Make<TitleChangedHandler>(instance);
@@ -218,6 +220,8 @@ public:
                 }
 
                 RECT bounds = {0, 0, instance->width, instance->height};
+                if (instance->hwnd)
+                    GetClientRect(instance->hwnd, &bounds);
                 controller->put_Bounds(bounds);
 
                 TitleChangedHandler* titleHandler = new TitleChangedHandler(instance);

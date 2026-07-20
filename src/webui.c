@@ -12359,10 +12359,14 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 
     // Old C WebView2 handler code removed - now using C++ API
 
+    // Available since Windows 8. May be missing in old MinGW headers.
+    #ifndef WS_EX_NOREDIRECTIONBITMAP
+    #define WS_EX_NOREDIRECTIONBITMAP 0x00200000L
+    #endif
+
     LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
-        if (uMsg == WM_CREATE) {
-            // Set win ptr
+        if (uMsg == WM_NCCREATE || uMsg == WM_CREATE) {
             CREATESTRUCT* pCreate = (CREATESTRUCT*)lParam;
             void* userData = pCreate->lpCreateParams;
             SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)userData);
@@ -12373,12 +12377,15 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
         _webui_window_t* win = _webui_dereference_win_ptr(ptr);
 
         switch (uMsg) {
-            case WM_CREATE: {
-                if (win) {
-                    if (win->transparent) {
-                        // New layer for background transparency
-                        SetWindowLong(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED); 
-                    }
+            case WM_NCCALCSIZE: {
+                if (win && win->frameless && wParam == TRUE && !IsZoomed(hwnd)) {
+                    NCCALCSIZE_PARAMS* params = (NCCALCSIZE_PARAMS*)lParam;
+                    LONG originalTop = params->rgrc[0].top;
+                    LRESULT result = DefWindowProc(hwnd, WM_NCCALCSIZE, wParam, lParam);
+                    if (result != 0)
+                        return result;
+                    params->rgrc[0].top = originalTop;
+                    return 0;
                 }
                 break;
             }
@@ -12766,8 +12773,14 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
             }
         }
 
+        // Set extended window style based on transparent flag
+        DWORD exStyle = 0;
+        if (win->transparent) {
+            exStyle |= WS_EX_NOREDIRECTIONBITMAP;
+        }
+
         HWND hwnd = CreateWindowExA(
-            0, wvClass, "", style,
+            exStyle, wvClass, "", style,
             x, y, width, height,
             NULL, NULL, GetModuleHandle(NULL), (LPVOID)win
         );
@@ -12777,6 +12790,26 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
             win->webView = NULL;
             _webui_mutex_is_webview_update(win, WEBUI_MUTEX_SET_FALSE);
             WEBUI_THREAD_RETURN
+        }
+
+        if (win->frameless) {
+            HMODULE dwmapi = LoadLibraryA("dwmapi.dll");
+            if (dwmapi) {
+                typedef HRESULT(WINAPI* DwmSetWindowAttributeFunc)(HWND, DWORD, LPCVOID, DWORD);
+                DwmSetWindowAttributeFunc setWindowAttribute =
+                    (DwmSetWindowAttributeFunc)GetProcAddress(dwmapi, "DwmSetWindowAttribute");
+                if (setWindowAttribute) {
+                    COLORREF borderColor = 0xFFFFFFFE;
+                    setWindowAttribute(hwnd, 34, &borderColor, sizeof(borderColor));
+                    DWORD cornerPreference = 1;
+                    setWindowAttribute(hwnd, 33, &cornerPreference, sizeof(cornerPreference));
+                }
+            }
+            SetWindowPos(
+                hwnd, NULL, 0, 0, 0, 0,
+                SWP_FRAMECHANGED | SWP_NOMOVE | 
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+            );
         }
 
         // Set HWND in C++ handle
