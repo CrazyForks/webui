@@ -391,7 +391,8 @@ bool _webui_win32_wv2_set_size(_webui_win32_wv2_handle handle, int width, int he
 bool _webui_win32_wv2_maximize(_webui_win32_wv2_handle handle) {
     if (!handle) return false;
     WebView2Instance* instance = static_cast<WebView2Instance*>(handle);
-    return instance->hwnd && ShowWindow(instance->hwnd, SW_MAXIMIZE);
+    if (!instance->hwnd) return false;
+    return ShowWindow(instance->hwnd, IsZoomed(instance->hwnd) ? SW_RESTORE : SW_MAXIMIZE);
 }
 
 bool _webui_win32_wv2_minimize(_webui_win32_wv2_handle handle) {

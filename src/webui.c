@@ -12364,6 +12364,18 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
     #define WS_EX_NOREDIRECTIONBITMAP 0x00200000L
     #endif
 
+    typedef HRESULT(WINAPI* _webui_dwm_set_window_attribute_fn)(HWND, DWORD, LPCVOID, DWORD);
+    static _webui_dwm_set_window_attribute_fn _webui_dwm_set_window_attribute(void) {
+        static _webui_dwm_set_window_attribute_fn fn = NULL;
+        if (!fn) {
+            HMODULE dwmapi = LoadLibraryA("dwmapi.dll");
+            if (dwmapi) {
+                fn = (_webui_dwm_set_window_attribute_fn)GetProcAddress(dwmapi, "DwmSetWindowAttribute");
+            }
+        }
+        return fn;
+    }
+
     LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
         if (uMsg == WM_NCCREATE || uMsg == WM_CREATE) {
@@ -12378,12 +12390,18 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 
         switch (uMsg) {
             case WM_NCCALCSIZE: {
-                if (win && win->frameless && wParam == TRUE && !IsZoomed(hwnd)) {
+                if (win && win->frameless && wParam == TRUE) {
                     NCCALCSIZE_PARAMS* params = (NCCALCSIZE_PARAMS*)lParam;
+                    if (IsZoomed(hwnd)) {
+                        // Maximized
+                        return 0;
+                    }
+                    // Non-maximized
                     LONG originalTop = params->rgrc[0].top;
                     LRESULT result = DefWindowProc(hwnd, WM_NCCALCSIZE, wParam, lParam);
-                    if (result != 0)
+                    if (result != 0) {
                         return result;
+                    }
                     params->rgrc[0].top = originalTop;
                     return 0;
                 }
@@ -12447,12 +12465,27 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
             }            
             case WM_GETMINMAXINFO: {
                 if (win) {
+                    LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam;
+                    bool handled = false;
+                    if (win->frameless) {
+                        HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                        MONITORINFO mi;
+                        mi.cbSize = sizeof(mi);
+                        if (GetMonitorInfo(monitor, &mi)) {
+                            lpMMI->ptMaxPosition.x = mi.rcWork.left - mi.rcMonitor.left;
+                            lpMMI->ptMaxPosition.y = mi.rcWork.top - mi.rcMonitor.top;
+                            lpMMI->ptMaxSize.x = mi.rcWork.right - mi.rcWork.left;
+                            lpMMI->ptMaxSize.y = mi.rcWork.bottom - mi.rcWork.top;
+                            handled = true;
+                        }
+                    }
                     if (win->minimum_size_set) {
-                        LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam;
                         lpMMI->ptMinTrackSize.x = win->minimum_width;
                         lpMMI->ptMinTrackSize.y = win->minimum_height;
-                        return 0;
+                        handled = true;
                     }
+                    if (handled)
+                        return 0;
                 }
                 break;
             }
@@ -12793,21 +12826,20 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
         }
 
         if (win->frameless) {
-            HMODULE dwmapi = LoadLibraryA("dwmapi.dll");
-            if (dwmapi) {
-                typedef HRESULT(WINAPI* DwmSetWindowAttributeFunc)(HWND, DWORD, LPCVOID, DWORD);
-                DwmSetWindowAttributeFunc setWindowAttribute =
-                    (DwmSetWindowAttributeFunc)GetProcAddress(dwmapi, "DwmSetWindowAttribute");
-                if (setWindowAttribute) {
-                    COLORREF borderColor = 0xFFFFFFFE;
-                    setWindowAttribute(hwnd, 34, &borderColor, sizeof(borderColor));
-                    DWORD cornerPreference = 1;
-                    setWindowAttribute(hwnd, 33, &cornerPreference, sizeof(cornerPreference));
-                }
+            _webui_dwm_set_window_attribute_fn setWindowAttribute = _webui_dwm_set_window_attribute();
+            if (setWindowAttribute) {
+                // DWMWA_BORDER_COLOR (34) = DWMWA_COLOR_NONE (0xFFFFFFFE)
+                COLORREF borderColor = 0xFFFFFFFE;
+                setWindowAttribute(hwnd, 34, &borderColor, sizeof(borderColor));
+                // DWMWA_WINDOW_CORNER_PREFERENCE (33) = DWMWCP_DONOTROUND (1)
+                DWORD cornerPreference = 1;
+                setWindowAttribute(hwnd, 33, &cornerPreference, sizeof(cornerPreference));
             }
+            // Recalculate the non-client frame so the frameless WM_NCCALCSIZE
+            // adjustments apply before the first paint.
             SetWindowPos(
                 hwnd, NULL, 0, 0, 0, 0,
-                SWP_FRAMECHANGED | SWP_NOMOVE | 
+                SWP_FRAMECHANGED | SWP_NOMOVE |
                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
             );
         }

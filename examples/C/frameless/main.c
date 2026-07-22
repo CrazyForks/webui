@@ -78,7 +78,7 @@ const char* html =
 "  </head>"
 "  <body>"
 "    <div id='ui-container'>"
-"      <div id='titlebar'>"
+"      <div id='titlebar' ondblclick='maximize()'>"
 "        <span id='title'>WebUI Frameless WebView Window</span>"
 "        <div id='buttons'>"
 "          <span class='button minimize' onclick='minimize()'></span>"
