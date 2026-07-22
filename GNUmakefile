@@ -55,7 +55,7 @@ WIN32_WV2_BUILD_FLAGS += -DWEBUI_WEBVIEW_STATIC
 WV2_STATIC_LIB := "$(MAKEFILE_DIR)/WebView2LoaderStatic.lib"
 endif
 WARNING_RELEASE := -w
-WARNING_LOG := -Wall -Wno-unused
+WARNING_LOG := -Wall -Wno-unused -Wno-format-truncation
 
 # OUTPUT FILES
 # The static output is the same for all platforms
