@@ -33,10 +33,7 @@ class WebuiBridge {
 	// Frameless Dragging
 	#enableCustomDragging: boolean = false;
 	#isDragging: boolean = false;
-	#initialMouseX: number = 0;
-	#initialMouseY: number = 0;
-	#initialWindowX: number = window.screenX || window.screenLeft;
-	#initialWindowY: number = window.screenY || window.screenTop;
+	#dragArmed: boolean = false;
 	#currentWindowX: number = window.screenX || window.screenLeft;
 	#currentWindowY: number = window.screenY || window.screenTop;
 	// Internals
@@ -170,45 +167,32 @@ class WebuiBridge {
 		});
 		// Frameless Dragging
 		if (this.#enableCustomDragging) {
+			// WebUI drag app-region custom implementation for Linux (X11/Wayland)
+			const resolveRegion = (el: Element | null): string => {
+				while (el) {
+					const region = window.getComputedStyle(el).getPropertyValue("--webui-app-region").trim();
+					if (region === "drag" || region === "no-drag") return region;
+					el = el.parentElement;
+				}
+				return "";
+			};
+			document.addEventListener("mousedown", (e) => {
+				this.#isDragging = false;
+				this.#dragArmed = (e.button === 0) && (resolveRegion(e.target as Element | null) === "drag");
+			});
 			document.addEventListener("mousemove", (e) => {
-				// WebUI Webkit App-Region Custom Implementation
 				if (e.buttons !== 1) {
+					this.#dragArmed = false;
 					this.#isDragging = false;
 					return;
 				}
-				if (!this.#isDragging) {
-					let target = e.target;
-					while (target) {
-						let computedStyle = window.getComputedStyle(target);
-						let webuiComputed = computedStyle.getPropertyValue("--webui-app-region").trim();
-						if (webuiComputed === "drag") {
-							this.#initialMouseX = e.screenX;
-							this.#initialMouseY = e.screenY;
-							this.#initialWindowX = this.#currentWindowX;
-							this.#initialWindowY = this.#currentWindowY;
-							this.#isDragging = true;
-							break;
-						}
-						target = target.parentElement;
-					}
-					return;
+				if (this.#dragArmed && !this.#isDragging) {
+					this.#isDragging = true;
+					this.#sendDrag();
 				}
-				// Calculate window position relative to cursor movement
-				const deltaX = e.screenX - this.#initialMouseX;
-				const deltaY = e.screenY - this.#initialMouseY;
-				let newX = this.#initialWindowX + deltaX;
-				let newY = this.#initialWindowY + deltaY;
-				// Fix out of screen
-				if (newX < 0) newX = 0;
-				if (newY < 0) newY = 0;
-				// Move the window
-				this.#sendDrag(newX, newY);
-				// Update the last window position
-				this.#currentWindowX = newX;
-				this.#currentWindowY = newY;
 			});
-			// Stop frameless dragging on mouse release
 			document.addEventListener("mouseup", () => {
+				this.#dragArmed = false;
 				this.#isDragging = false;
 			});
 		}
@@ -492,17 +476,16 @@ class WebuiBridge {
 			}
 		}
 	}
-	#sendDrag(x: number, y: number) {
+	#sendDrag() {
 		if (this.#wsIsConnected()) {
-			if (this.#log) console.log(`WebUI -> Send Drag Event [${x}, ${y}]`);
+			if (this.#log) console.log(`WebUI -> Send window drag event`);
+			// Sent once, the backend GTK starts a native window-manager move.
 			const packet = Uint8Array.of(
 				// Protocol
 				// 0: [SIGNATURE]
 				// 1: [TOKEN]
 				// 2: [ID]
 				// 3: [CMD]
-				// 4: [X]
-				// 4: [Y]
 				this.#WEBUI_SIGNATURE,
 				0,
 				0,
@@ -511,8 +494,6 @@ class WebuiBridge {
 				0,
 				0, // ID (2 Bytes)
 				this.#CMD_WINDOW_DRAG,
-				...new Uint8Array(new Int32Array([x]).buffer), // X (4 Bytes)
-				...new Uint8Array(new Int32Array([y]).buffer), // Y (4 Bytes)
 			);
 			this.#addToken(packet, this.#token, this.#PROTOCOL_TOKEN);
 			// this.#addID(packet, 0, this.#PROTOCOL_ID)

@@ -223,6 +223,10 @@ typedef struct webui_event_inf_t {
     typedef void (*gtk_widget_add_events_func)(void *, int);
     typedef void* (*gdk_cursor_new_from_name_func)(void *, const char *);
     typedef void (*gdk_window_set_cursor_func)(void *, void *);
+    typedef void (*gtk_window_begin_move_drag_func)(void *, int, int, int, unsigned int);
+    typedef void* (*gdk_display_get_default_seat_func)(void *);
+    typedef void* (*gdk_seat_get_pointer_func)(void *);
+    typedef void (*gdk_device_get_position_func)(void *, void *, int *, int *);
     typedef unsigned long (*g_signal_connect_data_func)(void *, const char *, void (*callback)(void), void *, void *, int);
     typedef void (*gtk_widget_set_visual_func)(void *, void *);
     typedef void *(*gtk_widget_get_screen_func)(void *);
@@ -260,6 +264,10 @@ typedef struct webui_event_inf_t {
     static gtk_widget_add_events_func gtk_widget_add_events = NULL;
     static gdk_cursor_new_from_name_func gdk_cursor_new_from_name = NULL;
     static gdk_window_set_cursor_func gdk_window_set_cursor = NULL;
+    static gtk_window_begin_move_drag_func gtk_window_begin_move_drag = NULL;
+    static gdk_display_get_default_seat_func gdk_display_get_default_seat = NULL;
+    static gdk_seat_get_pointer_func gdk_seat_get_pointer = NULL;
+    static gdk_device_get_position_func gdk_device_get_position = NULL;
     static g_signal_connect_data_func g_signal_connect_data = NULL;
     static g_idle_add_func g_idle_add = NULL;
     static gtk_widget_set_visual_func gtk_widget_set_visual = NULL;
@@ -716,6 +724,7 @@ static bool _webui_wv_event_on_close(void *widget, void *event, void *arg);
 static int _webui_wv_exit_schedule(void* arg);
 static bool _webui_wv_maximize(_webui_wv_linux_t* webView);
 static bool _webui_wv_minimize(_webui_wv_linux_t* webView);
+static int _webui_wv_begin_move_idle(void* arg);
 static bool _webui_load_gtk_and_webkit();
 #else
 // macOS
@@ -11376,39 +11385,23 @@ static void _webui_ws_process(
                     // Process Commands
                     if ((unsigned char)packet[WEBUI_PROTOCOL_CMD] == WEBUI_CMD_WIN_DRAG) {
 
-                        // Drag Window Event (WebUI `-webkit-app-region: drag;` custom implementation)
+                        // WebUI drag app-region custom implementation for Linux (X11/Wayland)
+                        // `--webui-app-region: drag`
 
-                        // Protocol
-                        // [Header]
-                        // [X]
-                        // [Y]
-
-                        uint32_t x = 0;
-                        uint32_t y = 0;
-                        int X = 0;
-                        int Y = 0;
-
-                        // Little-endian
-                        x |= ((uint32_t) packet[WEBUI_PROTOCOL_DATA]&0xFF);
-                        x |= ((uint32_t) packet[WEBUI_PROTOCOL_DATA + 1]&0xFF) << 8;
-                        x |= ((uint32_t) packet[WEBUI_PROTOCOL_DATA + 2]&0xFF) << 16;
-                        x |= ((uint32_t) packet[WEBUI_PROTOCOL_DATA + 3]&0xFF) << 24;
-                        y |= ((uint32_t) packet[(WEBUI_PROTOCOL_DATA + 4)]&0xFF);
-                        y |= ((uint32_t) packet[(WEBUI_PROTOCOL_DATA + 4) + 1]&0xFF) << 8;
-                        y |= ((uint32_t) packet[(WEBUI_PROTOCOL_DATA + 4) + 2]&0xFF) << 16;
-                        y |= ((uint32_t) packet[(WEBUI_PROTOCOL_DATA + 4) + 3]&0xFF) << 24;
-
-                        X = (int)x;
-                        Y = (int)y;
+                        // The webui bridge sends this once when a drag starts
+                        // we hand the move to the window manager via `gtk_window_begin_move_drag`, 
+                        // so it tracks the cursor natively (X11 and Wayland).
 
                         #ifdef WEBUI_LOG
-                        _webui_log_debug("[Core] [WS #%zu]\t_webui_ws_process() -> "
-                            "Drag Window: X = %d (0x%08X), Y = %d (0x%08X)\n",
-                            recvNum, X, x, Y, y);
+                        _webui_log_debug("[Core] [WS #%zu]\t_webui_ws_process() -> Drag Window (--webui-app-region)\n", recvNum);
                         #endif
-
-                        // Move the dragged window
-                        webui_set_position(win->num, X, Y);
+                        #ifdef __linux__
+                        // `gtk_window_begin_move_drag` performs a pointer grab
+                        // that must run on the GTK main thread, not this thread
+                        // so marshal it there via g_idle_add.
+                        if (win->webView && g_idle_add)
+                            g_idle_add(_webui_wv_begin_move_idle, (void*)win);
+                        #endif
 
                     } else if ((unsigned char)packet[WEBUI_PROTOCOL_CMD] == WEBUI_CMD_CLICK) {
 
@@ -13133,21 +13126,26 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
         return false;
     };
 
+    static int _webui_wv_minimize_idle(void* arg) {
+        _webui_wv_linux_t* webView = (_webui_wv_linux_t*)arg;
+        if (webView && webView->gtk_win && gtk_window_iconify)
+            gtk_window_iconify(webView->gtk_win);
+        return 0; // G_SOURCE_REMOVE: run once
+    }
+
     static bool _webui_wv_minimize(_webui_wv_linux_t* webView) {
         #ifdef WEBUI_LOG
         _webui_log_debug("[Core]\t\t_webui_wv_minimize()\n");
         #endif
-        if (webView && webView->gtk_win && gtk_window_iconify) {
-            gtk_window_iconify(webView->gtk_win);
+        if (webView && webView->gtk_win && g_idle_add) {
+            g_idle_add(_webui_wv_minimize_idle, (void*)webView);
             return true;
         }
         return false;
     }
 
-    static bool _webui_wv_maximize(_webui_wv_linux_t* webView) {
-        #ifdef WEBUI_LOG
-        _webui_log_debug("[Core]\t\t_webui_wv_maximize()\n");
-        #endif
+    static int _webui_wv_maximize_idle(void* arg) {
+        _webui_wv_linux_t* webView = (_webui_wv_linux_t*)arg;
         if (webView && webView->gtk_win && gtk_window_maximize) {
             // Toggle maximize/restore
             if (gtk_window_is_maximized && gtk_window_unmaximize &&
@@ -13155,6 +13153,16 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
                 gtk_window_unmaximize(webView->gtk_win);
             else
                 gtk_window_maximize(webView->gtk_win);
+        }
+        return 0; // G_SOURCE_REMOVE: run once
+    }
+
+    static bool _webui_wv_maximize(_webui_wv_linux_t* webView) {
+        #ifdef WEBUI_LOG
+        _webui_log_debug("[Core]\t\t_webui_wv_maximize()\n");
+        #endif
+        if (webView && webView->gtk_win && g_idle_add) {
+            g_idle_add(_webui_wv_maximize_idle, (void*)webView);
             return true;
         }
         return false;
@@ -13433,6 +13441,26 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
         g_timeout_add((1 * 1000), _webui_wv_exit_schedule, NULL);
     }
 
+    static int _webui_wv_begin_move_idle(void* arg) {
+        _webui_window_t* win = _webui_dereference_win_ptr(arg);
+        if (win && win->webView && win->webView->gtk_win && gtk_window_begin_move_drag) {
+            // Query the pointer's root position so the move reference is in
+            // GTK's own coordinate system.
+            int px = 0, py = 0;
+            if (gdk_display_get_default && gdk_display_get_default_seat &&
+                gdk_seat_get_pointer && gdk_device_get_position) {
+                void* display = gdk_display_get_default();
+                void* seat = display ? gdk_display_get_default_seat(display) : NULL;
+                void* pointer = seat ? gdk_seat_get_pointer(seat) : NULL;
+                if (pointer)
+                    gdk_device_get_position(pointer, NULL, &px, &py);
+            }
+            // Mouse Button 1 (left), timestamp 0 (GDK_CURRENT_TIME)
+            gtk_window_begin_move_drag(win->webView->gtk_win, 1, px, py, 0);
+        }
+        return 0; // G_SOURCE_REMOVE: run once
+    }
+
     static int _webui_wv_create_schedule(void* arg) {
 
         #ifdef WEBUI_LOG
@@ -13579,6 +13607,14 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
                 libgtk, "gdk_cursor_new_from_name");
             gdk_window_set_cursor = (gdk_window_set_cursor_func)dlsym(
                 libgtk, "gdk_window_set_cursor");
+            gtk_window_begin_move_drag = (gtk_window_begin_move_drag_func)dlsym(
+                libgtk, "gtk_window_begin_move_drag");
+            gdk_display_get_default_seat = (gdk_display_get_default_seat_func)dlsym(
+                libgtk, "gdk_display_get_default_seat");
+            gdk_seat_get_pointer = (gdk_seat_get_pointer_func)dlsym(
+                libgtk, "gdk_seat_get_pointer");
+            gdk_device_get_position = (gdk_device_get_position_func)dlsym(
+                libgtk, "gdk_device_get_position");
             g_signal_connect_data = (g_signal_connect_data_func)dlsym(
                 libgtk, "g_signal_connect_data");
             g_idle_add = (g_idle_add_func)dlsym(
