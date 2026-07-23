@@ -15,55 +15,200 @@ public:
 
     void run() {
         const std::string html = R"V0G0N(
-        <html>
+        <!DOCTYPE html>
+        <html lang="en">
         <head>
             <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <script src="/webui.js"></script>
             <title>Call JavaScript from C++ Example</title>
             <style>
-            body {
-                background: linear-gradient(to left, #36265a, #654da9);
-                color: AliceBlue;
-                font: 16px sans-serif;
-                text-align: center;
-                margin-top: 30px;
-            }
-            button {
-                margin: 5px 0 10px;
-            }
+                :root {
+                    --bg-top: #0f172a;
+                    --bg-bottom: #020617;
+                    --surface: #1e293b;
+                    --surface-hover: #334155;
+                    --border: #334155;
+                    --border-hover: #475569;
+                    --accent: #38bdf8;
+                    --danger: #ef4444;
+                    --danger-hover: #dc2626;
+                    --text-main: #f8fafc;
+                    --text-muted: #94a3b8;
+                }
+
+                * {
+                    box-sizing: border-box;
+                    margin: 0;
+                    padding: 0;
+                }
+
+                body {
+                    background: linear-gradient(to top, var(--bg-top), var(--bg-bottom));
+                    background-attachment: fixed;
+                    color: var(--text-main);
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                    min-height: 100vh;
+                    padding: 60px 20px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                }
+
+                header {
+                    width: 100%;
+                    max-width: 640px;
+                    margin-bottom: 32px;
+                }
+
+                h1 {
+                    font-size: 1.5rem;
+                    font-weight: 600;
+                    letter-spacing: -0.025em;
+                }
+
+                main {
+                    width: 100%;
+                    max-width: 640px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 28px;
+                }
+
+                .counter-card {
+                    background-color: var(--surface);
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                    padding: 32px;
+                    text-align: center;
+                }
+
+                .counter-label {
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    color: var(--text-muted);
+                    margin-bottom: 8px;
+                }
+
+                .counter-value {
+                    font-size: 4rem;
+                    font-weight: 700;
+                    color: var(--accent);
+                    font-variant-numeric: tabular-nums;
+                    line-height: 1;
+                }
+
+                .section-title {
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    color: var(--text-muted);
+                    margin-bottom: 12px;
+                }
+
+                .grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+                    gap: 12px;
+                }
+
+                button {
+                    background-color: var(--surface);
+                    color: var(--text-main);
+                    border: 1px solid var(--border);
+                    padding: 12px 16px;
+                    border-radius: 6px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                    font-family: inherit;
+                    cursor: pointer;
+                    transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+                    text-align: center;
+                }
+
+                button:hover:not(:disabled) {
+                    background-color: var(--surface-hover);
+                    border-color: var(--border-hover);
+                }
+
+                button:active:not(:disabled) {
+                    background-color: var(--surface);
+                }
+
+                button:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
+                button.primary {
+                    background-color: #2563eb;
+                    border-color: #2563eb;
+                }
+
+                button.primary:hover:not(:disabled) {
+                    background-color: #1d4ed8;
+                    border-color: #1d4ed8;
+                }
+
+                button.danger {
+                    background-color: transparent;
+                    border-color: var(--danger);
+                    color: var(--danger);
+                }
+
+                button.danger:hover:not(:disabled) {
+                    background-color: var(--danger);
+                    color: white;
+                }
             </style>
         </head>
         <body>
-            <h1>WebUI - Call JavaScript from C++</h1>
-            <br>
-            <h1 id="count">0</h1>
-            <br>
-            <button id="ManualBtn" OnClick="my_function_count();">Manual Count</button>
-            <br>
-            <button id="AutoBtn" OnClick="AutoTest();">Auto Count (Every 10ms)</button>
-            <br>
-            <button id="Exit" OnClick="this.disabled=true;">Exit</button>
+            <header>
+                <h1>WebUI - Call JavaScript from C++</h1>
+            </header>
+
+            <main>
+                <div class="counter-card">
+                    <div class="counter-label">Current Count</div>
+                    <div class="counter-value" id="count">0</div>
+                </div>
+
+                <section>
+                    <div class="section-title">Controls</div>
+                    <div class="grid">
+                        <button id="ManualBtn" class="primary" onclick="my_function_count();">Manual Count</button>
+                        <button id="AutoBtn" onclick="AutoTest();">Auto Count (Every 10ms)</button>
+                        <button id="Exit" class="danger" onclick="this.disabled=true;">Exit</button>
+                    </div>
+                </section>
+            </main>
+
             <script>
-            let count = 0;
-            let auto_running = false;
+                let count = 0;
+                let auto_running = false;
 
-            function GetCount() {
-                return count;
-            }
-            function SetCount(number) {
-                document.getElementById('count').innerHTML = number;
-                count = number;
-            }
-            function AutoTest(number) {
-                if (auto_running) return;
-                auto_running = true;
-                document.getElementById('AutoBtn').disabled = true;
-                document.getElementById('ManualBtn').disabled = true;
+                function GetCount() {
+                    return count;
+                }
 
-                setInterval(function() {
-                my_function_count();
-                }, 10);
-            }
+                function SetCount(number) {
+                    document.getElementById('count').innerHTML = number;
+                    count = number;
+                }
+
+                function AutoTest(number) {
+                    if (auto_running) return;
+                    auto_running = true;
+                    document.getElementById('AutoBtn').disabled = true;
+                    document.getElementById('ManualBtn').disabled = true;
+
+                    setInterval(function() {
+                        my_function_count();
+                    }, 10);
+                }
             </script>
         </body>
         </html>

@@ -15,44 +15,205 @@ public:
 
     void run() {
         const std::string html = R"V0G0N(
-        <html>
+        <!DOCTYPE html>
+        <html lang="en">
         <head>
             <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <script src="/webui.js"></script>
             <title>Call C++ from JavaScript Example</title>
             <style>
-            body {
-                background: linear-gradient(to left, #36265a, #654da9);
-                color: AliceBlue;
-                font-size: 16px sans-serif;
-                text-align: center;
-                margin-top: 30px;
-            }
-            button {
-                margin: 5px 0 10px;
-            }
+                :root {
+                    --bg-top: #0f172a;
+                    --bg-bottom: #020617;
+                    --surface: #1e293b;
+                    --surface-hover: #334155;
+                    --border: #334155;
+                    --border-hover: #475569;
+                    --accent: #38bdf8;
+                    --text-main: #f8fafc;
+                    --text-muted: #94a3b8;
+                }
+
+                * {
+                    box-sizing: border-box;
+                    margin: 0;
+                    padding: 0;
+                }
+
+                body {
+                    background: linear-gradient(to top, var(--bg-top), var(--bg-bottom));
+                    background-attachment: fixed;
+                    color: var(--text-main);
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                    min-height: 100vh;
+                    padding: 60px 20px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                }
+
+                header {
+                    width: 100%;
+                    max-width: 640px;
+                    margin-bottom: 40px;
+                }
+
+                h1 {
+                    font-size: 1.5rem;
+                    font-weight: 600;
+                    letter-spacing: -0.025em;
+                    margin-bottom: 6px;
+                }
+
+                .subtitle {
+                    color: var(--text-muted);
+                    font-size: 0.875rem;
+                }
+
+                main {
+                    width: 100%;
+                    max-width: 640px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 32px;
+                }
+
+                .section-title {
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    color: var(--text-muted);
+                    margin-bottom: 12px;
+                }
+
+                .grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+                    gap: 12px;
+                }
+
+                button {
+                    background-color: var(--surface);
+                    color: var(--text-main);
+                    border: 1px solid var(--border);
+                    padding: 12px 16px;
+                    border-radius: 6px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                    font-family: inherit;
+                    cursor: pointer;
+                    transition: background-color 0.15s ease, border-color 0.15s ease;
+                    text-align: left;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                }
+
+                button:hover {
+                    background-color: var(--surface-hover);
+                    border-color: var(--border-hover);
+                }
+
+                button:active {
+                    background-color: var(--surface);
+                }
+
+                button.primary {
+                    background-color: #2563eb;
+                    border-color: #2563eb;
+                }
+
+                button.primary:hover {
+                    background-color: #1d4ed8;
+                    border-color: #1d4ed8;
+                }
+
+                .action-row {
+                    display: flex;
+                    gap: 12px;
+                    align-items: center;
+                }
+
+                .action-row button {
+                    flex: 1;
+                }
+
+                .input-wrapper {
+                    display: flex;
+                    align-items: center;
+                    background-color: var(--surface);
+                    border: 1px solid var(--border);
+                    border-radius: 6px;
+                    padding: 0 14px;
+                    height: 43px;
+                    width: 180px;
+                }
+
+                .input-wrapper label {
+                    font-size: 0.875rem;
+                    color: var(--text-muted);
+                    margin-right: 10px;
+                    user-select: none;
+                }
+
+                input[type="text"] {
+                    background: transparent;
+                    border: none;
+                    color: var(--accent);
+                    font-size: 0.875rem;
+                    font-weight: 600;
+                    font-family: inherit;
+                    width: 100%;
+                    outline: none;
+                }
             </style>
         </head>
         <body>
-            <h1>WebUI - Call C++ from JavaScript</h1>
-            <p>Call C++ functions with arguments (<em>See the logs in your terminal</em>)</p>
-            <button onclick="my_function_string('Hello', 'World');">Call my_function_string()</button>
-            <br>
-            <button onclick="my_function_integer(123, 456, 789);">Call my_function_integer()</button>
-            <br>
-            <button onclick="my_function_boolean(true, false);">Call my_function_boolean()</button>
-            <br>
-            <p>Call a C++ function that returns a response</p>
-            <button onclick="MyJS();">Call my_function_with_response()</button>
-            <div>Double: <input type="text" id="MyInputID" value="2"></div>
+            <header>
+                <h1>WebUI - Call C++ from JavaScript</h1>
+                <p class="subtitle">Call C++ functions with arguments <em>(See logs in terminal)</em></p>
+            </header>
+
+            <main>
+                <section>
+                    <div class="section-title">Standard Execution</div>
+                    <div class="grid">
+                        <button onclick="my_function_string('Hello', 'World');">
+                            <span>my_function_string()</span>
+                        </button>
+                        <button onclick="my_function_integer(123, 456, 789);">
+                            <span>my_function_integer()</span>
+                        </button>
+                        <button onclick="my_function_boolean(true, false);">
+                            <span>my_function_boolean()</span>
+                        </button>
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-title">Response Handling</div>
+                    <div class="action-row">
+                        <button class="primary" onclick="MyJS();">
+                            <span>my_function_with_response()</span>
+                        </button>
+                        <div class="input-wrapper">
+                            <label for="MyInputID">Double:</label>
+                            <input type="text" id="MyInputID" value="2">
+                        </div>
+                    </div>
+                </section>
+            </main>
+
             <script>
-            function MyJS() {
-                const MyInput = document.getElementById('MyInputID');
-                const number = MyInput.value;
-                my_function_with_response(number, 2).then((response) => {
-                MyInput.value = response;
-                });
-            }
+                function MyJS() {
+                    const MyInput = document.getElementById('MyInputID');
+                    const number = MyInput.value;
+                    my_function_with_response(number, 2).then((response) => {
+                        MyInput.value = response;
+                    });
+                }
             </script>
         </body>
         </html>
