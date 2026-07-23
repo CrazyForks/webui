@@ -212,6 +212,17 @@ typedef struct webui_event_inf_t {
     typedef void (*gtk_window_set_decorated_func)(void *, int);
     typedef void (*gtk_window_set_resizable_func)(void *, int);
     typedef void (*gtk_window_set_position_func)(void *, int);
+    typedef void (*gtk_window_iconify_func)(void *);
+    typedef void (*gtk_window_maximize_func)(void *);
+    typedef void (*gtk_window_unmaximize_func)(void *);
+    typedef int (*gtk_window_is_maximized_func)(void *);
+    typedef void (*gtk_window_begin_resize_drag_func)(void *, int, int, int, int, unsigned int);
+    typedef int (*gtk_widget_get_allocated_width_func)(void *);
+    typedef int (*gtk_widget_get_allocated_height_func)(void *);
+    typedef void* (*gtk_widget_get_window_func)(void *);
+    typedef void (*gtk_widget_add_events_func)(void *, int);
+    typedef void* (*gdk_cursor_new_from_name_func)(void *, const char *);
+    typedef void (*gdk_window_set_cursor_func)(void *, void *);
     typedef unsigned long (*g_signal_connect_data_func)(void *, const char *, void (*callback)(void), void *, void *, int);
     typedef void (*gtk_widget_set_visual_func)(void *, void *);
     typedef void *(*gtk_widget_get_screen_func)(void *);
@@ -238,6 +249,17 @@ typedef struct webui_event_inf_t {
     static gtk_window_set_decorated_func gtk_window_set_decorated = NULL;
     static gtk_window_set_resizable_func gtk_window_set_resizable = NULL;
     static gtk_window_set_position_func gtk_window_set_position = NULL;
+    static gtk_window_iconify_func gtk_window_iconify = NULL;
+    static gtk_window_maximize_func gtk_window_maximize = NULL;
+    static gtk_window_unmaximize_func gtk_window_unmaximize = NULL;
+    static gtk_window_is_maximized_func gtk_window_is_maximized = NULL;
+    static gtk_window_begin_resize_drag_func gtk_window_begin_resize_drag = NULL;
+    static gtk_widget_get_allocated_width_func gtk_widget_get_allocated_width = NULL;
+    static gtk_widget_get_allocated_height_func gtk_widget_get_allocated_height = NULL;
+    static gtk_widget_get_window_func gtk_widget_get_window = NULL;
+    static gtk_widget_add_events_func gtk_widget_add_events = NULL;
+    static gdk_cursor_new_from_name_func gdk_cursor_new_from_name = NULL;
+    static gdk_window_set_cursor_func gdk_window_set_cursor = NULL;
     static g_signal_connect_data_func g_signal_connect_data = NULL;
     static g_idle_add_func g_idle_add = NULL;
     static gtk_widget_set_visual_func gtk_widget_set_visual = NULL;
@@ -251,6 +273,21 @@ typedef struct webui_event_inf_t {
         int width;
         int height;
     } GdkRectangle;
+    // Minimal GdkEventButton layout (GTK3 ABI) for reading edge-resize presses
+    typedef struct {
+        int type;
+        void* window;
+        char send_event;
+        unsigned int time;
+        double x;
+        double y;
+        double* axes;
+        unsigned int state;
+        unsigned int button;
+        void* device;
+        double x_root;
+        double y_root;
+    } _webui_GdkEventButton;
     // WebKit Symbol Addresses
     typedef void *(*webkit_web_view_new_func)(void);
     typedef void (*webkit_web_view_load_uri_func)(void *, const char *);
@@ -13098,25 +13135,30 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 
     static bool _webui_wv_minimize(_webui_wv_linux_t* webView) {
         #ifdef WEBUI_LOG
-        _webui_log_debug("[Core]\t\t_webui_wv_maximize()\n");
+        _webui_log_debug("[Core]\t\t_webui_wv_minimize()\n");
         #endif
-        if (webView && webView->gtk_win) {
-            // gtk_window_iconify(webView->gtk_win);
+        if (webView && webView->gtk_win && gtk_window_iconify) {
+            gtk_window_iconify(webView->gtk_win);
             return true;
         }
         return false;
     }
-    
+
     static bool _webui_wv_maximize(_webui_wv_linux_t* webView) {
         #ifdef WEBUI_LOG
         _webui_log_debug("[Core]\t\t_webui_wv_maximize()\n");
         #endif
-        if (webView && webView->gtk_win) {
-            // gtk_window_maximize(webView->gtk_win);
+        if (webView && webView->gtk_win && gtk_window_maximize) {
+            // Toggle maximize/restore
+            if (gtk_window_is_maximized && gtk_window_unmaximize &&
+                gtk_window_is_maximized(webView->gtk_win))
+                gtk_window_unmaximize(webView->gtk_win);
+            else
+                gtk_window_maximize(webView->gtk_win);
             return true;
         }
         return false;
-    }    
+    }
 
     static bool _webui_wv_set_position(_webui_wv_linux_t* webView, int x, int y) {
         #ifdef WEBUI_LOG
@@ -13202,6 +13244,94 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
         libgtk = NULL;
     };
 
+    // Start a native window resize when the user presses near a frameless
+    // window's edge. Undecorated GTK windows have no WM resize borders, so we
+    // detect edge presses here and hand off to the window manager via
+    // `gtk_window_begin_resize_drag` (works on both X11 and Wayland).
+    static int _webui_wv_on_button_press(void* widget, void* event, void* arg) {
+        _webui_window_t* win = _webui_dereference_win_ptr(arg);
+        if (!win || !win->frameless || !win->resizable)
+            return 0; // Let the page handle the event
+        if (!gtk_window_begin_resize_drag || !gtk_widget_get_allocated_width ||
+            !gtk_widget_get_allocated_height || !win->webView || !win->webView->gtk_win)
+            return 0;
+        _webui_GdkEventButton* e = (_webui_GdkEventButton*)event;
+        if (e->button != 1)
+            return 0; // Only the left button resizes
+        const int border = 6; // Edge grab thickness in pixels
+        int w = gtk_widget_get_allocated_width(widget);
+        int h = gtk_widget_get_allocated_height(widget);
+        int x = (int)e->x;
+        int y = (int)e->y;
+        bool left = (x <= border), right = (x >= w - border);
+        bool top = (y <= border), bottom = (y >= h - border);
+        // GdkWindowEdge: NW=0, N=1, NE=2, W=3, E=4, SW=5, S=6, SE=7
+        int edge;
+        if (top && left) edge = 0;
+        else if (top && right) edge = 2;
+        else if (bottom && left) edge = 5;
+        else if (bottom && right) edge = 7;
+        else if (left) edge = 3;
+        else if (right) edge = 4;
+        else if (top) edge = 1;
+        else if (bottom) edge = 6;
+        else return 0; // Not near an edge; let the page handle the event
+        gtk_window_begin_resize_drag(win->webView->gtk_win, edge, (int)e->button,
+            (int)e->x_root, (int)e->y_root, e->time);
+        return 1; // Consumed
+    }
+
+    // Cached resize cursors (created lazily, kept for the process lifetime like
+    // the other GTK symbols). Types: 0=ns, 1=ew, 2=nwse, 3=nesw.
+    static void* _webui_gtk_resize_cursor(int type) {
+        static void* cursors[4] = {NULL, NULL, NULL, NULL};
+        static const char* const names[4] = {"ns-resize", "ew-resize", "nwse-resize", "nesw-resize"};
+        if (type < 0 || type > 3)
+            return NULL;
+        if (!cursors[type] && gdk_cursor_new_from_name && gdk_display_get_default) {
+            void* display = gdk_display_get_default();
+            if (display)
+                cursors[type] = gdk_cursor_new_from_name(display, names[type]);
+        }
+        return cursors[type];
+    }
+
+    // Show the matching resize cursor while hovering a frameless window's edge.
+    // The event is consumed on the edge so WebKit does not immediately replace
+    // our cursor with the content cursor; off the edge we do nothing and let
+    // WebKit manage the cursor as usual.
+    static int _webui_wv_on_motion(void* widget, void* event, void* arg) {
+        _webui_window_t* win = _webui_dereference_win_ptr(arg);
+        if (!win || !win->frameless || !win->resizable)
+            return 0;
+        if (!gtk_widget_get_window || !gdk_window_set_cursor ||
+            !gtk_widget_get_allocated_width || !gtk_widget_get_allocated_height)
+            return 0;
+        // Button and motion events share the same layout up to x/y.
+        _webui_GdkEventButton* e = (_webui_GdkEventButton*)event;
+        const int border = 6;
+        int w = gtk_widget_get_allocated_width(widget);
+        int h = gtk_widget_get_allocated_height(widget);
+        int x = (int)e->x;
+        int y = (int)e->y;
+        bool left = (x <= border), right = (x >= w - border);
+        bool top = (y <= border), bottom = (y >= h - border);
+        int type = -1;
+        if ((top && left) || (bottom && right)) type = 2;      // nwse
+        else if ((top && right) || (bottom && left)) type = 3; // nesw
+        else if (left || right) type = 1;                      // ew
+        else if (top || bottom) type = 0;                      // ns
+        if (type < 0)
+            return 0; // Not on an edge: let WebKit manage the cursor
+        void* cursor = _webui_gtk_resize_cursor(type);
+        if (!cursor)
+            return 0; // Cursor unavailable: let WebKit manage the cursor
+        void* gdk_win = gtk_widget_get_window(widget);
+        if (gdk_win)
+            gdk_window_set_cursor(gdk_win, cursor);
+        return 1; // Consumed
+    }
+
     static void _webui_wv_create(_webui_window_t* win) {
 
         #ifdef WEBUI_LOG
@@ -13262,6 +13392,17 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
             _webui_wv_event_closed), (void *)win, NULL, 0);
         g_signal_connect_data(win->webView->gtk_wv, "decide-policy", G_CALLBACK(
             _webui_wv_event_decision), (void *)win, NULL, 0);
+        // Frameless windows: intercept edge presses to start a native resize
+        // (undecorated windows have no window-manager resize borders) and edge
+        // hovers to show the matching resize cursor.
+        if (win->frameless && win->resizable) {
+            if (gtk_widget_add_events)
+                gtk_widget_add_events(win->webView->gtk_wv, 4 | 256); // motion + button-press masks
+            g_signal_connect_data(win->webView->gtk_wv, "button-press-event", G_CALLBACK(
+                _webui_wv_on_button_press), (void *)win, NULL, 0);
+            g_signal_connect_data(win->webView->gtk_wv, "motion-notify-event", G_CALLBACK(
+                _webui_wv_on_motion), (void *)win, NULL, 0);
+        }
         
         // Linux GTK WebView Auto JS Inject
         if (_webui.config.show_auto_js_inject) {
@@ -13416,6 +13557,28 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
                 libgtk, "gtk_window_set_resizable");
             gtk_window_set_position = (gtk_window_set_position_func)dlsym(
                 libgtk, "gtk_window_set_position");
+            gtk_window_iconify = (gtk_window_iconify_func)dlsym(
+                libgtk, "gtk_window_iconify");
+            gtk_window_maximize = (gtk_window_maximize_func)dlsym(
+                libgtk, "gtk_window_maximize");
+            gtk_window_unmaximize = (gtk_window_unmaximize_func)dlsym(
+                libgtk, "gtk_window_unmaximize");
+            gtk_window_is_maximized = (gtk_window_is_maximized_func)dlsym(
+                libgtk, "gtk_window_is_maximized");
+            gtk_window_begin_resize_drag = (gtk_window_begin_resize_drag_func)dlsym(
+                libgtk, "gtk_window_begin_resize_drag");
+            gtk_widget_get_allocated_width = (gtk_widget_get_allocated_width_func)dlsym(
+                libgtk, "gtk_widget_get_allocated_width");
+            gtk_widget_get_allocated_height = (gtk_widget_get_allocated_height_func)dlsym(
+                libgtk, "gtk_widget_get_allocated_height");
+            gtk_widget_get_window = (gtk_widget_get_window_func)dlsym(
+                libgtk, "gtk_widget_get_window");
+            gtk_widget_add_events = (gtk_widget_add_events_func)dlsym(
+                libgtk, "gtk_widget_add_events");
+            gdk_cursor_new_from_name = (gdk_cursor_new_from_name_func)dlsym(
+                libgtk, "gdk_cursor_new_from_name");
+            gdk_window_set_cursor = (gdk_window_set_cursor_func)dlsym(
+                libgtk, "gdk_window_set_cursor");
             g_signal_connect_data = (g_signal_connect_data_func)dlsym(
                 libgtk, "g_signal_connect_data");
             g_idle_add = (g_idle_add_func)dlsym(
