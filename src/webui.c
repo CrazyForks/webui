@@ -8511,38 +8511,38 @@ static size_t _webui_find_the_best_browser(_webui_window_t* win) {
         return Chromium;
     #endif
 
-    // No browser is running, let's return the best available one based on OS.
+    // No browser process is already running, let's return the best available installed one based on OS.
 
     #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
     // Windows
     if (_webui_browser_exist(win, Chrome)) return Chrome;
-    if (!_webui_browser_exist(win, Edge)) return Edge;
-    if (!_webui_browser_exist(win, Epic)) return Epic;
-    if (!_webui_browser_exist(win, Vivaldi)) return Vivaldi;
-    if (!_webui_browser_exist(win, Brave)) return Brave;
-    if (!_webui_browser_exist(win, Firefox)) return Firefox;
-    if (!_webui_browser_exist(win, Yandex)) return Yandex;
-    if (!_webui_browser_exist(win, Chromium)) return Chromium;
+    if (_webui_browser_exist(win, Edge)) return Edge;
+    if (_webui_browser_exist(win, Epic)) return Epic;
+    if (_webui_browser_exist(win, Vivaldi)) return Vivaldi;
+    if (_webui_browser_exist(win, Brave)) return Brave;
+    if (_webui_browser_exist(win, Firefox)) return Firefox;
+    if (_webui_browser_exist(win, Yandex)) return Yandex;
+    if (_webui_browser_exist(win, Chromium)) return Chromium;
     #elif __APPLE__
     // macOS
     if (_webui_browser_exist(win, Chrome)) return Chrome;
-    if (!_webui_browser_exist(win, Edge)) return Edge;
-    if (!_webui_browser_exist(win, Chromium)) return Chromium;
-    if (!_webui_browser_exist(win, Epic)) return Epic;
-    if (!_webui_browser_exist(win, Vivaldi)) return Vivaldi;
-    if (!_webui_browser_exist(win, Brave)) return Brave;
-    if (!_webui_browser_exist(win, Firefox)) return Firefox;
-    if (!_webui_browser_exist(win, Yandex)) return Yandex;
+    if (_webui_browser_exist(win, Edge)) return Edge;
+    if (_webui_browser_exist(win, Chromium)) return Chromium;
+    if (_webui_browser_exist(win, Epic)) return Epic;
+    if (_webui_browser_exist(win, Vivaldi)) return Vivaldi;
+    if (_webui_browser_exist(win, Brave)) return Brave;
+    if (_webui_browser_exist(win, Firefox)) return Firefox;
+    if (_webui_browser_exist(win, Yandex)) return Yandex;
     #else
     // Linux
     if (_webui_browser_exist(win, Chrome)) return Chrome;
-    if (!_webui_browser_exist(win, Edge)) return Edge;
-    if (!_webui_browser_exist(win, Chromium)) return Chromium;
-    if (!_webui_browser_exist(win, Epic)) return Epic;
-    if (!_webui_browser_exist(win, Vivaldi)) return Vivaldi;
-    if (!_webui_browser_exist(win, Brave)) return Brave;
-    if (!_webui_browser_exist(win, Firefox)) return Firefox;
-    if (!_webui_browser_exist(win, Yandex)) return Yandex;
+    if (_webui_browser_exist(win, Edge)) return Edge;
+    if (_webui_browser_exist(win, Chromium)) return Chromium;
+    if (_webui_browser_exist(win, Epic)) return Epic;
+    if (_webui_browser_exist(win, Vivaldi)) return Vivaldi;
+    if (_webui_browser_exist(win, Brave)) return Brave;
+    if (_webui_browser_exist(win, Firefox)) return Firefox;
+    if (_webui_browser_exist(win, Yandex)) return Yandex;
     #endif
 
     // No browser found!, return AnyBrowser.
