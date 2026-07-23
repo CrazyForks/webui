@@ -22,8 +22,8 @@ CC = g++
 BUILD_LIB ?=
 
 # BUILD FLAGS
-STATIC_BUILD_FLAGS = main.cpp -I"$(INCLUDE_DIR)" -L"$(LIB_DIR)"
-DYN_BUILD_FLAGS = main.cpp -I"$(INCLUDE_DIR)" -L"$(LIB_DIR)"
+STATIC_BUILD_FLAGS = -std=c++17 main.cpp -I"$(INCLUDE_DIR)" -L"$(LIB_DIR)"
+DYN_BUILD_FLAGS = -std=c++17 main.cpp -I"$(INCLUDE_DIR)" -L"$(LIB_DIR)"
 
 # Platform conditions
 ifeq ($(OS),Windows_NT)
