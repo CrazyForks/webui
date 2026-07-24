@@ -12804,8 +12804,9 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
         wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
         wc.cbClsExtra = 0;
         wc.cbWndExtra = 0;
-        wc.hIcon = LoadIcon(GetModuleHandle(NULL) ,MAKEINTRESOURCE(101));    // default user icon resouce : 101
-        if(!wc.hIcon) wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);            // if not existed, use system default icon
+        wc.hIcon = LoadIcon(wc.hInstance, MAKEINTRESOURCE(101));            // default user icon resource: 101
+        if (!wc.hIcon) wc.hIcon = LoadIcon(wc.hInstance, IDI_APPLICATION);  // otherwise, use the executable's application icon
+        if (!wc.hIcon) wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);          // if not present, use the system default icon
 
         if (!RegisterClassA(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
             _webui_wv_free(win->webView);
